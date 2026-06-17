@@ -945,7 +945,7 @@
     body-scroll-lock-upgrade "^1.1.0"
     focus-trap "7.5.4"
 
-"@qwikdev/pwa@workspace:../":
+"@qwikdev/pwa@^0.0.4":
   version "0.0.4"
   resolved "https://registry.yarnpkg.com/@qwikdev/pwa/-/pwa-0.0.4.tgz#f8486684b922d4c80b37241b48594e9493686814"
   integrity sha512-in00nqj6W7PTWCa9Dc333RqF7azODsVM9YC4mDvWh9SoIosUtFIIKmdQEIYKo5r8JRbilRzcOcuX3yfbCtuvGQ==

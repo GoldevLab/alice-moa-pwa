@@ -7,6 +7,7 @@ app = 'alice-moa'
 primary_region = 'bog'
 
 [build]
+  dockerfile = "dockerfile"
 
 [http_service]
   internal_port = 3000
