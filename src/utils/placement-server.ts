@@ -1,0 +1,246 @@
+import { server$ } from '@builder.io/qwik-city';
+import { Resend } from 'resend';
+import { placementSections } from '~/data/placement-test';
+import {
+  getNextTeensLevel,
+  getTeensLevelTableForPrompt,
+  inferTeensLevel,
+  formatTeensLevel,
+} from '~/data/teens-levels';
+
+const AUDIO_DATA_URL_PREFIX = 'data:audio/';
+
+function decodeBase64DataUrl(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function transcribeAudio(audioPayload: string, openaiApiKey: string): Promise<string> {
+  if (!openaiApiKey || !audioPayload) return '';
+
+  try {
+    let audioBytes: Uint8Array;
+    let mimeType = 'audio/webm';
+
+    if (audioPayload.startsWith(AUDIO_DATA_URL_PREFIX)) {
+      const header = audioPayload.slice(0, audioPayload.indexOf(','));
+      const match = header.match(/^data:([^;]+)/);
+      if (match?.[1]) mimeType = match[1];
+      audioBytes = decodeBase64DataUrl(audioPayload);
+    } else {
+      console.warn('[PLACEMENT] Unsupported audio payload format, skipping transcription');
+      return '';
+    }
+
+    const formData = new FormData();
+    const extension = mimeType.includes('mp4') || mimeType.includes('aac')
+      ? 'm4a'
+      : mimeType.includes('webm')
+        ? 'webm'
+        : mimeType.includes('ogg')
+          ? 'ogg'
+          : 'wav';
+    formData.append('file', new Blob([audioBytes], { type: mimeType }), `audio.${extension}`);
+    formData.append('model', 'whisper-1');
+    formData.append('language', 'en');
+
+    const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${openaiApiKey}` },
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      console.error('[PLACEMENT] Whisper API error', resp.status, await resp.text());
+      return '';
+    }
+
+    const result = await resp.json();
+    return result.text || '';
+  } catch (err) {
+    console.error('[PLACEMENT] Whisper transcription error', err);
+    return '';
+  }
+}
+
+export const serverGeneratePlacementFeedback = server$(async function (
+  this: any,
+  {
+    answers,
+    autoScore,
+    maxScore,
+    autoLevel,
+  }: {
+    answers: Record<string, string>;
+    autoScore: number;
+    maxScore: number;
+    autoLevel: string;
+  },
+): Promise<string> {
+  const autoTeensLevel = inferTeensLevel(autoScore, maxScore);
+  const nextLevel = getNextTeensLevel(autoTeensLevel);
+  const fallback = `Según tu puntaje (${autoScore}/${maxScore}), tu curso recomendado es ${formatTeensLevel(autoTeensLevel)}. ${
+    nextLevel
+      ? `Para avanzar, tu meta sería ${nextLevel.fullLabel}.`
+      : '¡Estás en el nivel más alto de nuestro programa Teens!'
+  } Nuestro equipo revisará tus respuestas abiertas para confirmar tu nivel.`;
+  const openAIApiKey = this.env.get('OPENAI_API_KEY') || import.meta.env.OPENAI_API_KEY;
+
+  for (const key of Object.keys(answers)) {
+    if (key.startsWith('q_audio_')) {
+      const payload = answers[key];
+      if (payload?.startsWith(AUDIO_DATA_URL_PREFIX)) {
+        answers[key] = await transcribeAudio(payload, openAIApiKey);
+      } else if (!payload) {
+        answers[key] = '';
+      }
+    }
+  }
+
+  if (!openAIApiKey) {
+    console.warn('[PLACEMENT] Missing OPENAI_API_KEY, skipping AI feedback.');
+    return fallback;
+  }
+
+  try {
+    const [{ ChatOpenAI }, { SystemMessage, HumanMessage }] = await Promise.all([
+      import('@langchain/openai'),
+      import('@langchain/core/messages'),
+    ]);
+
+    const llm = new ChatOpenAI({
+      openAIApiKey,
+      model: 'gpt-4o-mini',
+      temperature: 0.2,
+    });
+
+    const digest = buildAnswerDigest(answers);
+    const studentName = answers.q1_name?.trim() || 'el/la estudiante';
+    const teensTable = getTeensLevelTableForPrompt();
+    const userPrompt = `
+Datos del estudiante:
+- Nombre: ${studentName}
+- Puntaje automático (preguntas cerradas): ${autoScore}/${maxScore}
+- Curso Teens sugerido por puntaje: ${autoLevel}
+
+Escala oficial MOA Academy (Teens → CEFR):
+${teensTable}
+
+Respuestas (resumidas):
+${digest}
+
+Tarea:
+1. Confirma o ajusta el curso Teens recomendado (solo puedes elegir entre los 12 niveles de la tabla). Puedes subir o bajar máximo 1 nivel respecto al sugerido por puntaje si las respuestas abiertas, listening, writing o speaking lo justifican claramente.
+2. En la PRIMERA línea escribe exactamente: "Curso recomendado: Teens X (CEFR)" usando el nivel final.
+3. Explica en 2-3 oraciones en español por qué ese curso es el adecuado.
+4. Menciona una fortaleza concreta y un área a mejorar para subir al siguiente Teens.
+5. Cierra con un mensaje motivador breve dirigido al estudiante.
+`;
+
+    const response = await llm.invoke([
+      new SystemMessage(
+        'Eres un evaluador académico de MOA Academy. Asignas cursos Teens (1–12) según la escala oficial. Sé claro, empático y específico. Siempre indica el curso Teens y su equivalencia CEFR.',
+      ),
+      new HumanMessage(userPrompt),
+    ]);
+
+    const content = Array.isArray(response.content)
+      ? response.content.map((part: any) => part.text ?? '').join('\n')
+      : (response.content as string);
+
+    return (content?.trim() || fallback).slice(0, 1500);
+  } catch (error) {
+    console.error('[PLACEMENT] AI feedback error:', error);
+    return fallback;
+  }
+});
+
+export const sendPlacementResultNotification = server$(async function (
+  this: any,
+  {
+    userId,
+    userName,
+    userEmail,
+    autoScore,
+    maxScore,
+    level,
+    feedback,
+  }: {
+    userId: string;
+    userName: string;
+    userEmail: string;
+    autoScore: number;
+    maxScore: number;
+    level: string;
+    feedback: string;
+  },
+) {
+  const resendApiKey = this.env.get('RESEND_API_KEY');
+  if (!resendApiKey) {
+    console.warn('[PLACEMENT] Missing RESEND_API_KEY, skipping notification.');
+    return;
+  }
+
+  const senderEmail = this.env.get('SENDER_EMAIL') || 'onboarding@resend.dev';
+  const recipient = 'emoa.recepcion@gmail.com';
+  const resend = new Resend(resendApiKey);
+
+  const subject = `Placement Test · ${userName || userEmail} · ${level}`;
+  const html = `
+    <h2>Nuevo resultado del Placement Test</h2>
+    <p><strong>ID de usuario:</strong> ${userId}</p>
+    <p><strong>Nombre:</strong> ${userName}</p>
+    <p><strong>Email:</strong> ${userEmail}</p>
+    <p><strong>Puntaje automático:</strong> ${autoScore}/${maxScore}</p>
+    <p><strong>Curso Teens recomendado:</strong> ${level}</p>
+    <p><strong>Retroalimentación AI:</strong></p>
+    <p>${(feedback || 'No se generó retroalimentación adicional.').replace(/\n/g, '<br/>')}</p>
+  `;
+  const text = `Nuevo resultado del Placement Test\nID de usuario: ${userId}\nNombre: ${userName}\nEmail: ${userEmail}\nPuntaje automático: ${autoScore}/${maxScore}\nCurso Teens recomendado: ${level}\nRetroalimentación AI: ${feedback || 'No disponible'}`;
+
+  const { error } = await resend.emails.send({
+    from: senderEmail,
+    to: recipient,
+    subject,
+    html,
+    text,
+  });
+
+  if (error) {
+    console.error('[PLACEMENT] Failed to send notification:', error);
+  }
+});
+
+export function buildAnswerDigest(answers: Record<string, string>): string {
+  const sections = placementSections.map((section) => {
+    const questionLines = section.questions
+      .map((question) => {
+        const promptSnippet =
+          question.prompt.length > 90
+            ? `${question.prompt.slice(0, 90).trim()}…`
+            : question.prompt.trim();
+        const rawAnswer = answers[question.id] ?? '';
+        const formattedAnswer =
+          question.type === 'audio' && rawAnswer.startsWith(AUDIO_DATA_URL_PREFIX)
+            ? '[Audio grabado — pendiente de transcripción]'
+            : truncateAnswer(rawAnswer);
+        return `- ${promptSnippet}: ${formattedAnswer || 'Sin respuesta'}`;
+      })
+      .join('\n');
+
+    return `${section.title}:\n${questionLines}`;
+  });
+
+  return sections.join('\n\n');
+}
+
+function truncateAnswer(value?: string, maxLength = 180): string {
+  if (!value) return '';
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}…` : normalized;
+}

@@ -1,4 +1,4 @@
-const staticPaths = new Set(["/31.png","/32.png","/33.png","/_headers","/_redirects","/apple-touch-icon-180x180.png","/breakfast.mp3","/favicon.ico","/favicon.svg","/fonts/poppins-400.woff2","/fonts/poppins-500.woff2","/fonts/poppins-700.woff2","/future.mp3","/manifest.json","/maskable-icon-512x512.png","/prs_alice.idle.mp4","/pwa-192x192.png","/pwa-512x512.png","/pwa-64x64.png","/q-manifest.json","/qwik-prefetch-service-worker.js","/robots.txt","/screenshot.png","/service-worker.js","/sitemap.xml","/tech.mp3"]);
+const staticPaths = new Set(["/31.png","/32.png","/33.png","/_headers","/_redirects","/breakfast.mp3","/favicon.ico","/favicon.svg","/fonts/poppins-400.woff2","/fonts/poppins-500.woff2","/fonts/poppins-700.woff2","/future.mp3","/manifest.json","/prs_alice.idle.mp4","/q-manifest.json","/qwik-prefetch-service-worker.js","/robots.txt","/screenshot.png","/service-worker.js","/sitemap.xml","/tech.mp3"]);
 function isStaticPath(method, url) {
   if (method.toUpperCase() !== 'GET') {
     return false;

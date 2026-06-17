@@ -85,6 +85,7 @@ export async function initAuthDatabase(requestEvent: RequestEventBase): Promise<
           level TEXT,
           status TEXT NOT NULL DEFAULT 'submitted',
           feedback_summary TEXT,
+          source TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

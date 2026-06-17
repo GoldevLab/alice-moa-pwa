@@ -3,6 +3,7 @@ import { routeLoader$, type DocumentHead } from '@builder.io/qwik-city';
 import { getUserId } from '~/utils/auth';
 import { tursoClient } from '~/utils/turso';
 import { placementSections, type PlacementQuestion } from '~/data/placement-test';
+import { PlacementAudioPlayer } from '~/components/placement/PlacementAudioPlayer';
 import { isDashboardAdmin } from '~/constants/dashboard';
 
 const orderedPlacementQuestions = placementSections.flatMap((section) => section.questions);
@@ -345,7 +346,7 @@ export default component$(() => {
                   <th class="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Estudiante</th>
                   <th class="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Contacto</th>
                   <th class="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Score</th>
-                  <th class="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Nivel</th>
+                  <th class="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Curso Teens</th>
                   <th class="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Estado</th>
                   <th class="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Feedback IA</th>
                   <th class="px-6 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Cuenta</th>
@@ -455,7 +456,12 @@ export default component$(() => {
                                 const questionMeta = placementQuestionDetails[question.id];
                                 const answer = attempt.answers[question.id] ?? '';
                                 const isAudio = questionMeta?.type === 'audio';
-                                // Show audio player for any non-empty answer in audio questions
+                                const isPlayableAudio =
+                                  isAudio &&
+                                  answer &&
+                                  (answer.startsWith('data:audio/') ||
+                                    answer.startsWith('blob:') ||
+                                    answer.startsWith('http'));
                                 return (
                                   <div
                                     key={`${attempt.id}-${question.id}`}
@@ -470,8 +476,13 @@ export default component$(() => {
                                     </p>
                                     <div class="text-sm text-gray-700 dark:text-gray-200 mt-2 whitespace-pre-line">
                                       {isAudio ? (
-                                        answer && typeof answer === 'string' ? (
-                                          <audio controls src={answer} class="mt-2" />
+                                        isPlayableAudio ? (
+                                          <PlacementAudioPlayer
+                                            src={answer}
+                                            label="Respuesta de audio del estudiante"
+                                          />
+                                        ) : answer ? (
+                                          <span>{answer}</span>
                                         ) : (
                                           <span class="italic text-red-500">Sin audio grabado</span>
                                         )

@@ -364,8 +364,8 @@ const serverFetchLangChainResponse = server$(async function(
             ? ` (auto score ${placementContext?.autoScore}/${placementContext?.maxAutoScore})`
             : '';
         const placementInsight = placementContext?.level
-            ? `Placement insight: Latest MOA placement test indicates CEFR ${placementContext.level}${placementScoreText}. Coach from this baseline, celebrate strengths, and map the bridge to the next band.`
-            : 'Placement insight: No placement test on record yet. Invite the learner to share current evidence or to complete the MOA placement test so you can calibrate instruction.';
+            ? `Placement insight: Latest MOA placement test recommends ${placementContext.level}${placementScoreText}. Coach from this Teens course baseline, celebrate strengths, and map the bridge to the next Teens level.`
+            : 'Placement insight: No placement test on record yet. Invite the learner to share current evidence or to complete the MOA placement test so you can calibrate instruction and assign the right Teens course.';
         const placementFeedbackText = placementContext?.feedbackSummary
             ? ` Recent academic feedback: ${sanitizeForPrompt(placementContext.feedbackSummary)}.`
             : '';

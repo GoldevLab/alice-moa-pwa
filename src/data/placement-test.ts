@@ -1,3 +1,9 @@
+import {
+  formatTeensLevel,
+  inferTeensLevel,
+  type TeensLevel,
+} from '~/data/teens-levels';
+
 export type PlacementQuestionType = 'text' | 'textarea' | 'select' | 'radio' | 'audio';
 
 export interface PlacementQuestion {
@@ -96,7 +102,7 @@ export const placementSections: PlacementSection[] = [
       id: 'q_listen_3',
       type: 'textarea',
       prompt:
-        "Listen: ",
+        'Listen to the audio and describe the speaker’s morning routine. Mention at least two activities.',
       audioSrc: '/breakfast.mp3',
       required: true,
       placeholder: 'Write your answer here',
@@ -105,7 +111,8 @@ export const placementSections: PlacementSection[] = [
     {
       id: 'q_listen_2',
       type: 'textarea',
-      prompt: 'Listen: ',
+      prompt:
+        'Listen to the audio and explain the main idea about technology that the speaker mentions.',
       audioSrc: '/tech.mp3',
       required: true,
       placeholder: 'Write your answer here',
@@ -115,7 +122,7 @@ export const placementSections: PlacementSection[] = [
       id: 'q_listen_1',
       type: 'textarea',
       prompt:
-        'Listen: ',
+        'Listen to the audio and summarize what the speaker says about the future.',
       audioSrc: '/future.mp3',
       required: true,
       placeholder: 'Write your answer here',
@@ -271,7 +278,7 @@ export const placementSections: PlacementSection[] = [
       },
       {
         id: 'q11_correction',
-        prompt: '11. Correct this sentence: “They are at the supermarket.”',
+        prompt: '11. Correct this sentence: “They is at the supermarket.”',
         type: 'text',
         required: true,
         section: 'Grammar',
@@ -899,13 +906,7 @@ export interface PlacementScoreDetail {
   correctAnswer?: string;
 }
 
-const LEVEL_THRESHOLDS = [
-  { minPercent: 90, label: 'C1' },
-  { minPercent: 75, label: 'B2' },
-  { minPercent: 60, label: 'B1' },
-  { minPercent: 45, label: 'A2' },
-  { minPercent: 0, label: 'A1' },
-] as const;
+export type { TeensLevel };
 
 export function computePlacementScore(
   answers: PlacementAnswerMap,
@@ -913,6 +914,7 @@ export function computePlacementScore(
   total: number;
   max: number;
   level: string;
+  teensLevel: TeensLevel;
   details: PlacementScoreDetail[];
 } {
   let total = 0;
@@ -945,21 +947,14 @@ export function computePlacementScore(
     });
   }
 
-  const level = inferLevel(total, max);
-  return { total, max, level, details };
+  const teensLevel = inferTeensLevel(total, max);
+  const level = formatTeensLevel(teensLevel);
+  return { total, max, level, teensLevel, details };
 }
 
+/** @deprecated Usar inferTeensLevel desde ~/data/teens-levels */
 export function inferLevel(score: number, max: number): string {
-  if (max === 0) {
-    return 'Pending review';
-  }
-  const percent = (score / max) * 100;
-  for (const threshold of LEVEL_THRESHOLDS) {
-    if (percent >= threshold.minPercent) {
-      return threshold.label;
-    }
-  }
-  return 'Pending review';
+  return formatTeensLevel(inferTeensLevel(score, max));
 }
 
 export function getQuestionById(
