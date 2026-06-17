@@ -164,16 +164,33 @@ export async function submitPlacementAttempt(
   const { total, max, level } = computePlacementScore(scoringAnswers);
 
   let feedback: string;
+  let finalLevel = level;
   try {
-    feedback = await serverGeneratePlacementFeedback({
+    const result = await serverGeneratePlacementFeedback({
       answers: storedAnswers,
       autoScore: total,
       maxScore: max,
       autoLevel: level,
     });
+    feedback = result.feedback;
+    finalLevel = result.level || level;
+    // Persistimos la transcripción del audio en vez del base64 crudo para
+    // evitar inflar la fila y dejar las respuestas legibles para el revisor.
+    for (const [key, text] of Object.entries(result.transcripts)) {
+      if (typeof text === 'string') {
+        storedAnswers[key] = text;
+      }
+    }
   } catch (error) {
     console.error('[PLACEMENT] Feedback generation failed', error);
     feedback = `Tu curso recomendado es ${level} (${total}/${max} puntos). Guardamos tu intento; el equipo revisará tus respuestas abiertas.`;
+    // Si falla el feedback (y por ende la transcripción), no guardamos los
+    // data-URL base64 de audio para no almacenar blobs enormes.
+    for (const key of Object.keys(storedAnswers)) {
+      if (key.startsWith('q_audio_') && storedAnswers[key]?.startsWith('data:audio/')) {
+        storedAnswers[key] = '[Audio grabado — transcripción no disponible]';
+      }
+    }
   }
 
   const client = tursoClient(requestEvent);
@@ -210,7 +227,7 @@ export async function submitPlacementAttempt(
           JSON.stringify(storedAnswers),
           total,
           max,
-          level,
+          finalLevel,
           'submitted',
           feedback,
           sourceValue,
@@ -232,7 +249,7 @@ export async function submitPlacementAttempt(
           JSON.stringify(storedAnswers),
           total,
           max,
-          level,
+          finalLevel,
           'submitted',
           feedback,
         ],
@@ -255,7 +272,7 @@ export async function submitPlacementAttempt(
       userEmail: storedAnswers.q1_email ?? 'Sin correo',
       autoScore: total,
       maxScore: max,
-      level,
+      level: finalLevel,
       feedback,
     });
   } catch (notifyError) {
@@ -266,7 +283,7 @@ export async function submitPlacementAttempt(
     success: true as const,
     autoScore: total,
     maxAutoScore: max,
-    level,
+    level: finalLevel,
     feedback,
   };
 }

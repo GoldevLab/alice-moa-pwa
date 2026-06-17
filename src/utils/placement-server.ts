@@ -3,10 +3,54 @@ import { Resend } from 'resend';
 import { placementSections } from '~/data/placement-test';
 import {
   getNextTeensLevel,
+  getTeensLevelByNumber,
   getTeensLevelTableForPrompt,
   inferTeensLevel,
   formatTeensLevel,
+  TEENS_LEVELS,
 } from '~/data/teens-levels';
+
+export interface PlacementFeedbackResult {
+  /** Texto de retroalimentación mostrado al estudiante. */
+  feedback: string;
+  /** Nivel Teens final (etiqueta completa, p. ej. "Teens 6 (B1)"). */
+  level: string;
+  /** Número de nivel Teens final (1–12). */
+  teens: number;
+  /** Transcripciones de las respuestas de audio (q_audio_*). */
+  transcripts: Record<string, string>;
+}
+
+/**
+ * Extrae el nivel Teens recomendado del texto de la IA, lo limita a ±1 nivel
+ * respecto al puntaje automático y normaliza la primera línea para que el
+ * badge mostrado y el feedback siempre coincidan.
+ */
+function resolveFinalLevel(
+  text: string,
+  autoTeens: number,
+): { level: string; teens: number; normalizedText: string } {
+  let teens = autoTeens;
+  const match = text.match(/Teens\s*(\d{1,2})/i);
+  if (match) {
+    const parsed = Number.parseInt(match[1], 10);
+    if (!Number.isNaN(parsed)) {
+      const lowerBound = Math.max(autoTeens - 1, 1);
+      const upperBound = Math.min(autoTeens + 1, 12);
+      teens = Math.min(upperBound, Math.max(lowerBound, parsed));
+    }
+  }
+
+  const levelObj = getTeensLevelByNumber(teens) ?? TEENS_LEVELS[0];
+  const fullLabel = formatTeensLevel(levelObj);
+
+  const firstLineRegex = /^.*Curso recomendado:.*$/im;
+  const normalizedText = firstLineRegex.test(text)
+    ? text.replace(firstLineRegex, `Curso recomendado: ${fullLabel}`)
+    : `Curso recomendado: ${fullLabel}\n${text}`;
+
+  return { level: fullLabel, teens, normalizedText };
+}
 
 const AUDIO_DATA_URL_PREFIX = 'data:audio/';
 
@@ -81,30 +125,44 @@ export const serverGeneratePlacementFeedback = server$(async function (
     maxScore: number;
     autoLevel: string;
   },
-): Promise<string> {
+): Promise<PlacementFeedbackResult> {
   const autoTeensLevel = inferTeensLevel(autoScore, maxScore);
   const nextLevel = getNextTeensLevel(autoTeensLevel);
-  const fallback = `Según tu puntaje (${autoScore}/${maxScore}), tu curso recomendado es ${formatTeensLevel(autoTeensLevel)}. ${
+  const autoLevelLabel = formatTeensLevel(autoTeensLevel);
+  const fallback = `Curso recomendado: ${autoLevelLabel}\nSegún tu puntaje (${autoScore}/${maxScore}), tu curso recomendado es ${autoLevelLabel}. ${
     nextLevel
       ? `Para avanzar, tu meta sería ${nextLevel.fullLabel}.`
       : '¡Estás en el nivel más alto de nuestro programa Teens!'
   } Nuestro equipo revisará tus respuestas abiertas para confirmar tu nivel.`;
   const openAIApiKey = this.env.get('OPENAI_API_KEY') || import.meta.env.OPENAI_API_KEY;
 
+  const transcripts: Record<string, string> = {};
   for (const key of Object.keys(answers)) {
     if (key.startsWith('q_audio_')) {
       const payload = answers[key];
       if (payload?.startsWith(AUDIO_DATA_URL_PREFIX)) {
-        answers[key] = await transcribeAudio(payload, openAIApiKey);
+        const text = await transcribeAudio(payload, openAIApiKey);
+        answers[key] = text;
+        transcripts[key] = text;
       } else if (!payload) {
         answers[key] = '';
+        transcripts[key] = '';
+      } else {
+        transcripts[key] = payload;
       }
     }
   }
 
+  const fallbackResult: PlacementFeedbackResult = {
+    feedback: fallback,
+    level: autoLevelLabel,
+    teens: autoTeensLevel.teens,
+    transcripts,
+  };
+
   if (!openAIApiKey) {
     console.warn('[PLACEMENT] Missing OPENAI_API_KEY, skipping AI feedback.');
-    return fallback;
+    return fallbackResult;
   }
 
   try {
@@ -153,10 +211,21 @@ Tarea:
       ? response.content.map((part: any) => part.text ?? '').join('\n')
       : (response.content as string);
 
-    return (content?.trim() || fallback).slice(0, 1500);
+    const rawText = content?.trim() || fallback;
+    const { level, teens, normalizedText } = resolveFinalLevel(
+      rawText,
+      autoTeensLevel.teens,
+    );
+
+    return {
+      feedback: normalizedText.slice(0, 1500),
+      level,
+      teens,
+      transcripts,
+    };
   } catch (error) {
     console.error('[PLACEMENT] AI feedback error:', error);
-    return fallback;
+    return fallbackResult;
   }
 });
 
