@@ -3,6 +3,7 @@ import {
   placementSections,
   type PlacementAnswerMap,
   computePlacementScore,
+  getQuestionById,
 } from '~/data/placement-test';
 import { getUserId } from '~/utils/auth';
 import { tursoClient } from '~/utils/turso';
@@ -15,6 +16,16 @@ import {
   serverGeneratePlacementFeedback,
   sendPlacementResultNotification,
 } from '~/utils/placement-server';
+import { isAudioDataUrl, transcribePlacementAudio } from '~/utils/placement-audio';
+import {
+  formatEnglishRequiredError,
+  isValidEnglishAnswer,
+  questionRequiresEnglish,
+} from '~/utils/placement-english';
+import {
+  findNonEnglishAnswersWithAI,
+  type EnglishValidationItem,
+} from '~/utils/placement-language-ai';
 
 export interface PlacementAttemptSummary {
   id?: string | number;
@@ -161,6 +172,62 @@ export async function submitPlacementAttempt(
     };
   }
 
+  const openAIApiKey =
+    requestEvent.env.get('OPENAI_API_KEY') || import.meta.env.OPENAI_API_KEY || '';
+  const answersToValidate: EnglishValidationItem[] = [];
+
+  for (const section of placementSections) {
+    for (const question of section.questions) {
+      if (!questionRequiresEnglish(question)) continue;
+
+      let value = storedAnswers[question.id];
+      if (!value) continue;
+
+      if (question.type === 'audio' && isAudioDataUrl(value)) {
+        const transcript = await transcribePlacementAudio(value, openAIApiKey);
+        if (transcript) {
+          storedAnswers[question.id] = transcript;
+          value = transcript;
+        } else {
+          continue;
+        }
+      }
+
+      answersToValidate.push({
+        questionId: question.id,
+        prompt: question.prompt,
+        answer: value,
+      });
+    }
+  }
+
+  const aiRejectedIds = await findNonEnglishAnswersWithAI(
+    answersToValidate,
+    openAIApiKey,
+  );
+
+  const nonEnglishPrompts: string[] = [];
+  if (aiRejectedIds !== null) {
+    for (const questionId of aiRejectedIds) {
+      const question = getQuestionById(questionId);
+      if (question) nonEnglishPrompts.push(question.prompt);
+    }
+  } else {
+    console.warn('[PLACEMENT] Falling back to heuristic English validation');
+    for (const item of answersToValidate) {
+      if (!isValidEnglishAnswer(item.answer)) {
+        nonEnglishPrompts.push(item.prompt);
+      }
+    }
+  }
+
+  if (nonEnglishPrompts.length > 0) {
+    return {
+      success: false as const,
+      error: formatEnglishRequiredError(nonEnglishPrompts),
+    };
+  }
+
   const { total, max, level } = computePlacementScore(scoringAnswers);
 
   let feedback: string;
@@ -187,7 +254,7 @@ export async function submitPlacementAttempt(
     // Si falla el feedback (y por ende la transcripción), no guardamos los
     // data-URL base64 de audio para no almacenar blobs enormes.
     for (const key of Object.keys(storedAnswers)) {
-      if (key.startsWith('q_audio_') && storedAnswers[key]?.startsWith('data:audio/')) {
+      if (key.startsWith('q_audio_') && isAudioDataUrl(storedAnswers[key])) {
         storedAnswers[key] = '[Audio grabado — transcripción no disponible]';
       }
     }

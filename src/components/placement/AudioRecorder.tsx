@@ -170,7 +170,7 @@ export const AudioRecorder = component$(
         )}
 
         <p class="text-xs text-gray-500">
-          Formato: {recordingFileExtension(mimeType.value).toUpperCase()} · compatible con móvil
+          Responde en inglés. Formato: {recordingFileExtension(mimeType.value).toUpperCase()} · compatible con móvil
         </p>
       </div>
     );

@@ -1,6 +1,7 @@
 import { server$ } from '@builder.io/qwik-city';
 import { Resend } from 'resend';
 import { placementSections } from '~/data/placement-test';
+import { isAudioDataUrl, transcribePlacementAudio } from '~/utils/placement-audio';
 import {
   getNextTeensLevel,
   getTeensLevelByNumber,
@@ -52,66 +53,6 @@ function resolveFinalLevel(
   return { level: fullLabel, teens, normalizedText };
 }
 
-const AUDIO_DATA_URL_PREFIX = 'data:audio/';
-
-function decodeBase64DataUrl(dataUrl: string): Uint8Array {
-  const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function transcribeAudio(audioPayload: string, openaiApiKey: string): Promise<string> {
-  if (!openaiApiKey || !audioPayload) return '';
-
-  try {
-    let audioBytes: Uint8Array;
-    let mimeType = 'audio/webm';
-
-    if (audioPayload.startsWith(AUDIO_DATA_URL_PREFIX)) {
-      const header = audioPayload.slice(0, audioPayload.indexOf(','));
-      const match = header.match(/^data:([^;]+)/);
-      if (match?.[1]) mimeType = match[1];
-      audioBytes = decodeBase64DataUrl(audioPayload);
-    } else {
-      console.warn('[PLACEMENT] Unsupported audio payload format, skipping transcription');
-      return '';
-    }
-
-    const formData = new FormData();
-    const extension = mimeType.includes('mp4') || mimeType.includes('aac')
-      ? 'm4a'
-      : mimeType.includes('webm')
-        ? 'webm'
-        : mimeType.includes('ogg')
-          ? 'ogg'
-          : 'wav';
-    formData.append('file', new Blob([audioBytes], { type: mimeType }), `audio.${extension}`);
-    formData.append('model', 'whisper-1');
-    formData.append('language', 'en');
-
-    const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${openaiApiKey}` },
-      body: formData,
-    });
-
-    if (!resp.ok) {
-      console.error('[PLACEMENT] Whisper API error', resp.status, await resp.text());
-      return '';
-    }
-
-    const result = await resp.json();
-    return result.text || '';
-  } catch (err) {
-    console.error('[PLACEMENT] Whisper transcription error', err);
-    return '';
-  }
-}
-
 export const serverGeneratePlacementFeedback = server$(async function (
   this: any,
   {
@@ -140,8 +81,8 @@ export const serverGeneratePlacementFeedback = server$(async function (
   for (const key of Object.keys(answers)) {
     if (key.startsWith('q_audio_')) {
       const payload = answers[key];
-      if (payload?.startsWith(AUDIO_DATA_URL_PREFIX)) {
-        const text = await transcribeAudio(payload, openAIApiKey);
+      if (isAudioDataUrl(payload)) {
+        const text = await transcribePlacementAudio(payload, openAIApiKey);
         answers[key] = text;
         transcripts[key] = text;
       } else if (!payload) {
@@ -198,6 +139,7 @@ Tarea:
 3. Explica en 2-3 oraciones en español por qué ese curso es el adecuado.
 4. Menciona una fortaleza concreta y un área a mejorar para subir al siguiente Teens.
 5. Cierra con un mensaje motivador breve dirigido al estudiante.
+6. Si alguna respuesta abierta está claramente en español en lugar de inglés, menciónalo como área crítica a mejorar (las respuestas en español no son válidas en esta prueba).
 `;
 
     const response = await llm.invoke([
@@ -295,7 +237,7 @@ export function buildAnswerDigest(answers: Record<string, string>): string {
             : question.prompt.trim();
         const rawAnswer = answers[question.id] ?? '';
         const formattedAnswer =
-          question.type === 'audio' && rawAnswer.startsWith(AUDIO_DATA_URL_PREFIX)
+          question.type === 'audio' && isAudioDataUrl(rawAnswer)
             ? '[Audio grabado — pendiente de transcripción]'
             : truncateAnswer(rawAnswer);
         return `- ${promptSnippet}: ${formattedAnswer || 'Sin respuesta'}`;

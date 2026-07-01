@@ -96,7 +96,7 @@ export const placementSections: PlacementSection[] = [
   {
     id: 'listening-mp3',
   title: 'Listening Comprehension',
-  description: 'Listen to each audio and answer the question in writing.',
+  description: 'Listen to each audio and answer the question in writing. All answers must be in English.',
   questions: [
     {
       id: 'q_listen_3',
@@ -138,7 +138,7 @@ export const placementSections: PlacementSection[] = [
     id: 'speaking-audio',
     title: 'Speaking (Audio)',
     description:
-      'Record your answer to each question. You may leave it blank, but it will be marked as incorrect if no audio is provided.',
+      'Record your answer to each question in English. You may leave a question blank, but it will be marked as incorrect if no audio is provided.',
     questions: [
       {
         id: 'q_audio_1',
@@ -425,7 +425,7 @@ export const placementSections: PlacementSection[] = [
   {
     id: 'vacation-writing',
     title: 'Vacation Writing',
-    description: 'Tell us about your last vacation.',
+    description: 'Tell us about your last vacation. Write your answer in English.',
     questions: [
       {
         id: 'q20_vacation',
@@ -778,7 +778,7 @@ export const placementSections: PlacementSection[] = [
     id: 'languages-reading',
     title: 'Reading: Languages Around the World',
     description:
-      'Read the excerpt, then answer the questions.\n\nIn his book *The Position of the German Language in the World*, sociolinguist Ulrich Ammon compares more than 12,000 languages. He notes that English is the most widely used international language in business, science, and the internet, while Mandarin Chinese has the largest number of native speakers. German is strong in engineering and exports, but it is rarely used for scientific publishing compared to English. A 2014 Natixis study predicted that French could become the most‑spoken language by 2050 because of African population growth, but the study ignored the dominance of English in higher education and technology. Ammon concludes that English will remain the global lingua franca in the near future, with regional powers like Spanish, Arabic, and French growing mainly through demographics.',
+      'Read the excerpt, then answer the questions in English.\n\nIn his book *The Position of the German Language in the World*, sociolinguist Ulrich Ammon compares more than 12,000 languages. He notes that English is the most widely used international language in business, science, and the internet, while Mandarin Chinese has the largest number of native speakers. German is strong in engineering and exports, but it is rarely used for scientific publishing compared to English. A 2014 Natixis study predicted that French could become the most‑spoken language by 2050 because of African population growth, but the study ignored the dominance of English in higher education and technology. Ammon concludes that English will remain the global lingua franca in the near future, with regional powers like Spanish, Arabic, and French growing mainly through demographics.',
     questions: [
       {
         id: 'q41_language_article',
@@ -834,7 +834,7 @@ export const placementSections: PlacementSection[] = [
   {
     id: 'reported-speech',
     title: 'Reported Speech',
-    description: 'Transform each quote.',
+    description: 'Transform each quote. Write your answers in English.',
     questions: [
       {
         id: 'q47_reported',
@@ -870,7 +870,7 @@ export const placementSections: PlacementSection[] = [
     id: 'perfect-city',
     title: 'Perfect City Essay',
     description:
-      'Imagine a perfect city and describe it using all the highlighted connectors.',
+      'Imagine a perfect city and describe it using all the highlighted connectors. Write your essay in English.',
     questions: [
       {
         id: 'q50_perfect_city',

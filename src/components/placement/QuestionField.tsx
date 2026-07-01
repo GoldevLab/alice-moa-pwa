@@ -3,6 +3,7 @@ import type { PlacementQuestion } from '~/data/placement-test';
 import { AudioRecorder, type RecordingState } from './AudioRecorder';
 import { PlacementAudioPlayer } from './PlacementAudioPlayer';
 import { questionIllustrations } from './question-illustrations';
+import { ENGLISH_ANSWER_HINT, questionRequiresEnglish } from '~/utils/placement-english';
 
 interface QuestionFieldProps {
   question: PlacementQuestion;
@@ -12,6 +13,9 @@ interface QuestionFieldProps {
 
 export const QuestionField = component$(({ question, answers, recordingState }: QuestionFieldProps) => {
   const illustration = questionIllustrations[question.id];
+  const helperText =
+    question.helperText ??
+    (questionRequiresEnglish(question) ? ENGLISH_ANSWER_HINT : undefined);
 
   return (
     <div>
@@ -36,8 +40,8 @@ export const QuestionField = component$(({ question, answers, recordingState }: 
 
       {renderInput(question, answers, recordingState)}
 
-      {question.helperText && (
-        <p class="text-xs text-gray-500 mt-2">{question.helperText}</p>
+      {helperText && (
+        <p class="text-xs text-gray-500 mt-2">{helperText}</p>
       )}
     </div>
   );

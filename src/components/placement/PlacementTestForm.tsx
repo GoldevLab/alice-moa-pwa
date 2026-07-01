@@ -6,6 +6,11 @@ import { LatestAttemptBanner } from '~/components/placement/LatestAttemptBanner'
 import { TeensLevelResult, TeensLevelScale } from '~/components/placement/TeensLevelResult';
 import type { RecordingState } from '~/components/placement/AudioRecorder';
 import type { PlacementAttemptSummary } from '~/utils/placement-actions';
+import {
+  formatEnglishRequiredError,
+  isValidEnglishAnswer,
+  questionRequiresEnglish,
+} from '~/utils/placement-english';
 
 interface PlacementActionResult {
   success?: boolean;
@@ -42,6 +47,24 @@ export const PlacementTestForm = component$(
       if (recordingState.busyCount > 0) {
         event.preventDefault();
         alert('Espera a que termine de procesarse la grabación de audio antes de enviar.');
+        return;
+      }
+
+      const nonEnglishPrompts: string[] = [];
+      for (const section of placementSections) {
+        for (const question of section.questions) {
+          if (!questionRequiresEnglish(question) || question.type === 'audio') continue;
+          const value = answers[question.id]?.trim();
+          if (!value) continue;
+          if (!isValidEnglishAnswer(value)) {
+            nonEnglishPrompts.push(question.prompt);
+          }
+        }
+      }
+
+      if (nonEnglishPrompts.length > 0) {
+        event.preventDefault();
+        alert(formatEnglishRequiredError(nonEnglishPrompts));
       }
     });
 
